@@ -4,6 +4,14 @@ import * as Tone from 'tone';
 import './App.css';
 
 function App() {
+  const [instrument1, setInstrument1] = useState<
+    'Synth' | 'AMSynth' | 'FMSynth' | 'DuoSynth'
+  >('Synth');
+
+  const [instrument2, setInstrument2] = useState<
+    'Synth' | 'AMSynth' | 'FMSynth' | 'DuoSynth'
+  >('AMSynth');
+
   const keyMap: Record<string, string> = {
     a: 'C4',
     s: 'D4',
@@ -15,8 +23,23 @@ function App() {
   };
 
   const keysDown = useRef(new Set<string>());
-  const synth = useRef(new Tone.PolySynth(Tone.Synth).toDestination());
-  const amSynth = useRef(new Tone.PolySynth(Tone.AMSynth).toDestination());
+  const synth1 = useRef(new Tone.PolySynth(Tone.Synth).toDestination());
+  const synth2 = useRef(new Tone.PolySynth(Tone.Synth).toDestination());
+
+  const createSynth = (instrument: keyof typeof Tone) => {
+    const SynthClass = Tone[instrument] as any;
+    return new Tone.PolySynth(SynthClass).toDestination();
+  };
+
+  useEffect(() => {
+    synth1.current.dispose();
+    synth1.current = createSynth(instrument1);
+  }, [instrument1]);
+
+  useEffect(() => {
+    synth2.current.dispose();
+    synth2.current = createSynth(instrument2);
+  }, [instrument2]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -32,19 +55,19 @@ function App() {
 
         // Play all currently held keys as a chord
         const chord = Array.from(keysDown.current).map((k) => keyMap[k]);
-        synth.current.triggerAttack(chord);
-        amSynth.current.triggerAttack(chord);
+        synth1.current.triggerAttack(chord);
+        synth2.current.triggerAttack(chord);
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       keysDown.current.delete(e.key);
 
       const note = keyMap[e.key];
-      synth.current.triggerRelease(note);
-      amSynth.current.triggerRelease(note);
+      synth1.current.triggerRelease(note);
+      synth2.current.triggerRelease(note);
       if (keysDown.current.size === 0) {
-        synth.current.releaseAll();
-        amSynth.current.releaseAll();
+        synth1.current.releaseAll();
+        synth2.current.releaseAll();
       }
     };
 
@@ -60,6 +83,25 @@ function App() {
     <div>
       <h1>Rock Band Multiplayer</h1>
       <p>Press A–J keys to play notes 🎸</p>
+      <select
+        value={instrument1}
+        onChange={(e) => setInstrument1(e.target.value as any)}
+      >
+        <option value="Synth">Synth</option>
+        <option value="AMSynth">AMSynth</option>
+        <option value="FMSynth">FMSynth</option>
+        <option value="DuoSynth">DuoSynth</option>
+      </select>
+
+      <select
+        value={instrument2}
+        onChange={(e) => setInstrument2(e.target.value as any)}
+      >
+        <option value="Synth">Synth</option>
+        <option value="AMSynth">AMSynth</option>
+        <option value="FMSynth">FMSynth</option>
+        <option value="DuoSynth">DuoSynth</option>
+      </select>
     </div>
   );
 }
