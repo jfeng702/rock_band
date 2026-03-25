@@ -4,13 +4,23 @@ import * as Tone from 'tone';
 import './App.css';
 
 function App() {
-  const [instrument1, setInstrument1] = useState<
-    'Synth' | 'AMSynth' | 'FMSynth' | 'DuoSynth'
-  >('Synth');
+  const instruments = [
+    'Synth',
+    'AMSynth',
+    'FMSynth',
+    'DuoSynth',
+    'MembraneSynth',
+    'MetalSynth',
+    'MonoSynth',
+    'MonoSynth',
+    'MonoSynth',
+    'MonoSynth',
+  ] as const;
+  type InstrumentType = (typeof instruments)[number];
 
-  const [instrument2, setInstrument2] = useState<
-    'Synth' | 'AMSynth' | 'FMSynth' | 'DuoSynth'
-  >('AMSynth');
+  const [instrument1, setInstrument1] = useState<InstrumentType>('Synth');
+
+  const [instrument2, setInstrument2] = useState<InstrumentType>('Synth');
 
   const keyMap: Record<string, string> = {
     a: 'C4',
@@ -23,13 +33,15 @@ function App() {
   };
 
   const keysDown = useRef(new Set<string>());
-  const synth1 = useRef(new Tone.PolySynth(Tone.Synth).toDestination());
-  const synth2 = useRef(new Tone.PolySynth(Tone.Synth).toDestination());
-
-  const createSynth = (instrument: keyof typeof Tone) => {
-    const SynthClass = Tone[instrument] as any;
+  const createSynth = (instrument: InstrumentType) => {
+    const SynthClass = Tone[
+      instrument as keyof typeof Tone
+    ] as unknown as typeof Tone.Synth;
     return new Tone.PolySynth(SynthClass).toDestination();
   };
+
+  const synth1 = useRef(createSynth(instrument1));
+  const synth2 = useRef(createSynth(instrument2));
 
   useEffect(() => {
     synth1.current.dispose();
@@ -87,10 +99,12 @@ function App() {
         value={instrument1}
         onChange={(e) => setInstrument1(e.target.value as any)}
       >
-        <option value="Synth">Synth</option>
         <option value="AMSynth">AMSynth</option>
-        <option value="FMSynth">FMSynth</option>
         <option value="DuoSynth">DuoSynth</option>
+        <option value="FMSynth">FMSynth</option>
+        <option value="MembraneSynth">MembraneSynth</option>
+        <option value="MetalSynth">MetalSynth</option>
+        <option value="MonoSynth">MonoSynth</option>
       </select>
 
       <select
@@ -101,6 +115,9 @@ function App() {
         <option value="AMSynth">AMSynth</option>
         <option value="FMSynth">FMSynth</option>
         <option value="DuoSynth">DuoSynth</option>
+        <option value="MembraneSynth">MembraneSynth</option>
+        <option value="MetalSynth">MetalSynth</option>
+        <option value="MonoSynth">MonoSynth</option>
       </select>
     </div>
   );
