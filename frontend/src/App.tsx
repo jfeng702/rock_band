@@ -85,13 +85,13 @@ function App() {
   const synth1 = useRef<Tone.PolySynth | null>(null);
   const broadcastSynth = useRef<Tone.PolySynth | null>(null);
 
-  const netSynths = useRef<Record<string, Tone.PolySynth>>({});
-  const getNetSynth = (instrument: InstrumentType) => {
-    if (!netSynths.current[instrument]) {
-      netSynths.current[instrument] = createSynth(instrument);
-    }
-    return netSynths.current[instrument];
-  };
+  // const netSynths = useRef<Record<string, Tone.PolySynth>>({});
+  // const getNetSynth = (instrument: InstrumentType) => {
+  //   if (!netSynths.current[instrument]) {
+  //     netSynths.current[instrument] = createSynth(instrument);
+  //   }
+  //   return netSynths.current[instrument];
+  // };
 
   useEffect(() => {
     broadcastSynth.current = createSynth('DuoSynth');
@@ -230,7 +230,7 @@ function App() {
         <select
           value={instrument1}
           onChange={(e) => {
-            setInstrument1((prevInstrument) => {
+            setInstrument1(() => {
               console.log('hey changing');
               socket.emit('change_instrument', instrument1);
               return e.target.value as InstrumentType;
