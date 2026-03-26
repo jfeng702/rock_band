@@ -31,7 +31,6 @@ function App() {
   type InstrumentType = (typeof instruments)[number];
 
   const [instrument1, setInstrument1] = useState<InstrumentType>('Synth');
-  const [instrument2, setInstrument2] = useState<InstrumentType>('Synth');
   const [users, setUsers] = useState<number>(0);
   const [activeLocalNotes, setActiveLocalNotes] = useState<Set<string>>(
     new Set(),
@@ -61,8 +60,8 @@ function App() {
     isLocal ? setActiveLocalNotes(cb) : setActiveNetNotes(cb);
   };
 
-  const keysDownLocal = useRef(new Set<string>());
-  const keysDownNet = useRef(new Set<string>());
+  const notesDownLocal = useRef(new Set<string>());
+  const notesDownNet = useRef(new Set<string>());
 
   const createSynth = (instrument: InstrumentType) => {
     const SynthClass = Tone[
@@ -72,53 +71,46 @@ function App() {
   };
 
   const synth1 = useRef<Tone.PolySynth | null>(null);
-  const synth2 = useRef<Tone.PolySynth | null>(null);
-  const broadcastSynth = useRef<Tone.PolySynth | null>(null);
+  const netSynths = useRef<Record<string, Tone.PolySynth>>({});
+  const getNetSynth = (instrument: InstrumentType) => {
+    if (!netSynths.current[instrument]) {
+      netSynths.current[instrument] = createSynth(instrument);
+    }
+    return netSynths.current[instrument];
+  };
 
   useEffect(() => {
     synth1.current = createSynth(instrument1);
     return () => {
+      synth1.current?.releaseAll();
       synth1.current?.dispose();
       synth1.current = null;
     };
   }, [instrument1]);
 
   useEffect(() => {
-    synth2.current = createSynth(instrument2);
-    return () => {
-      synth2.current?.dispose();
-      synth2.current = null;
-    };
-  }, [instrument2]);
-
-  useEffect(() => {
-    broadcastSynth.current = createSynth('DuoSynth');
-    return () => {
-      broadcastSynth.current?.dispose();
-      broadcastSynth.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
+      // e.preventDefault();
       const note = keyMap[e.key];
+      console.log(note, 'note');
+      console.log(notesDownLocal, 'notes down local');
 
-      if (!keysDownLocal.current.has(e.key) && keyMap[e.key]) {
+      if (note && !notesDownLocal.current.has(note)) {
         // Start audio context on first key press
 
         if (Tone.getContext().state !== 'running') {
-          Tone.start().then(() => {
-            console.log('AudioContext started!');
-          });
+          await Tone.start();
+          console.log('AudioContext started!');
         }
-        keysDownLocal.current.add(e.key);
+        console.log('adding');
+
+        notesDownLocal.current.add(note);
         addNote(note, true);
 
         // Play all currently held keys as a chord
-        const chord = Array.from(keysDownLocal.current).map((k) => keyMap[k]);
+        const chord = Array.from(notesDownLocal.current);
         synth1.current?.triggerAttack(chord);
-        synth2.current?.triggerAttack(chord);
-        socket.emit('key_down', e.key); // broadcast to others
+        socket.emit('note_down', { note, instrument1 }); // broadcast to others
       }
     };
 
@@ -127,42 +119,43 @@ function App() {
       if (!note) return;
       removeNote(note, true);
 
-      keysDownLocal.current.delete(e.key);
+      notesDownLocal.current.delete(note);
 
       synth1.current?.triggerRelease(note);
-      synth2.current?.triggerRelease(note);
-      if (keysDownLocal.current.size === 0) {
+      if (notesDownLocal.current.size === 0) {
         synth1.current?.releaseAll();
-        synth2.current?.releaseAll();
       }
-      socket.emit('key_up', e.key); // broadcast to others
+      socket.emit('note_up', { note, instrument1 }); // broadcast to others
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
     // Listen for notes from other players
-    socket.on('key_down', (key) => {
+    socket.on('note_down', (data) => {
       console.log('playing from broadcast');
-      keysDownNet.current.add(key);
-      const note = keyMap[key];
-      addNote(note, false);
+      notesDownNet.current.add(data.note);
+      addNote(data.note, false);
 
-      const chord = Array.from(keysDownNet.current).map((k) => keyMap[k]);
+      const chord = Array.from(notesDownNet.current);
 
-      broadcastSynth.current?.triggerAttack(chord);
+      const netSynth = getNetSynth(data.instrument1);
+
+      netSynth.triggerAttack(chord);
+      console.log('broadcast synth playing?');
     });
 
     // // Listen for notes from other players
-    socket.on('key_up', (key) => {
+    socket.on('note_up', (data) => {
       console.log('pausing from broadcast');
-      keysDownNet.current.delete(key);
+      notesDownNet.current.delete(data.note);
 
-      const note = keyMap[key];
-      removeNote(note, false);
-      broadcastSynth.current?.triggerRelease(note);
-      if (keysDownNet.current.size === 0) {
-        broadcastSynth.current?.releaseAll();
+      removeNote(data.note, false);
+      const netSynth = getNetSynth(data.instrument1);
+      netSynth.triggerRelease(data.note);
+
+      if (notesDownNet.current.size === 0) {
+        netSynth.releaseAll();
       }
     });
 
@@ -171,9 +164,9 @@ function App() {
     });
 
     return () => {
-      socket.off('key_down');
+      socket.off('note_down');
       socket.off('users_update');
-      socket.off('key_up');
+      socket.off('note_up');
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
@@ -184,31 +177,21 @@ function App() {
       <h1>Rock Band Multiplayer</h1>
       <p>Press A–J keys to play notes 🎸</p>
       <h2>Connected users: {users}</h2>
-      <select
-        value={instrument1}
-        onChange={(e) => setInstrument1(e.target.value as any)}
-      >
-        <option value="AMSynth">AMSynth</option>
-        <option value="DuoSynth">DuoSynth</option>
-        <option value="FMSynth">FMSynth</option>
-        <option value="MembraneSynth">MembraneSynth</option>
-        <option value="MetalSynth">MetalSynth</option>
-        <option value="MonoSynth">MonoSynth</option>
-      </select>
-
-      <select
-        value={instrument2}
-        onChange={(e) => setInstrument2(e.target.value as any)}
-      >
-        <option value="Synth">Synth</option>
-        <option value="AMSynth">AMSynth</option>
-        <option value="FMSynth">FMSynth</option>
-        <option value="DuoSynth">DuoSynth</option>
-        <option value="MembraneSynth">MembraneSynth</option>
-        <option value="MetalSynth">MetalSynth</option>
-        <option value="MonoSynth">MonoSynth</option>
-      </select>
-
+      <label className="instrument-label">
+        <span>Select an instrument</span>
+        <select
+          value={instrument1}
+          onChange={(e) => setInstrument1(e.target.value as InstrumentType)}
+          className="instrument-select"
+        >
+          <option value="AMSynth">AMSynth</option>
+          <option value="DuoSynth">DuoSynth</option>
+          <option value="FMSynth">FMSynth</option>
+          <option value="MembraneSynth">MembraneSynth</option>
+          <option value="MetalSynth">MetalSynth</option>
+          <option value="MonoSynth">MonoSynth</option>
+        </select>
+      </label>
       <h3>Other Players 🎹</h3>
       <div
         style={{
