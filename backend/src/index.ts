@@ -4,6 +4,7 @@ import type { Express, Request, Response } from 'express';
 import http from 'http';
 import { Server, Socket } from 'socket.io';
 import cors from 'cors';
+import 'dotenv/config'; // if using ESM
 
 // Express app setup
 const app: Express = express();
@@ -16,7 +17,7 @@ const server = http.createServer(app);
 // Socket.IO setup
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173', // React frontend
+    origin: [process.env.FRONTEND_URL || '', 'http://localhost:5173'], // React frontend
     methods: ['GET', 'POST'],
   },
 });
@@ -30,14 +31,26 @@ io.on('connection', (socket: Socket) => {
 
   io.emit('users_update', connectedUsers.size);
 
-  socket.on('key_down', (key: string) => {
-    console.log(`Key pressed by ${socket.id}: ${key}`);
-    socket.broadcast.emit('key_down', key); // send to everyone except sender
-  });
+  socket.on(
+    'note_down',
+    ({ note, instrument1 }: { note: string; instrument1: string }) => {
+      console.log(`Note pressed by ${socket.id}: ${note}`);
+      console.log(instrument1, 'instrument1');
+      socket.broadcast.emit('note_down', { note, instrument1 }); // send to everyone except sender
+    },
+  );
 
-  socket.on('key_up', (key: string) => {
-    console.log(`Key let go by ${socket.id}: ${key}`);
-    socket.broadcast.emit('key_up', key); // send to everyone except sender
+  socket.on(
+    'note_up',
+    ({ note, instrument1 }: { note: string; instrument1: string }) => {
+      console.log(`Note let go by ${socket.id}: ${note}`);
+      socket.broadcast.emit('note_up', { note, instrument1 }); // send to everyone except sender
+    },
+  );
+
+  socket.on('change_instrument', (instrument) => {
+    console.log('receive change', instrument);
+    socket.broadcast.emit('change_instrument', instrument);
   });
 
   socket.on('disconnect', () => {
@@ -53,5 +66,7 @@ app.get('/', (req: Request, res: Response) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const PORT = Number(process.env.PORT) || 3000;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+});

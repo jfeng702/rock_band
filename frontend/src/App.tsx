@@ -6,7 +6,7 @@ import './App.css';
 
 const SOCKET_URL = import.meta.env.VITE_BACKEND_URL; // read env variable
 
-const socket: Socket = io(SOCKET_URL || 'http://localhost:3000');
+const socket: Socket = io(SOCKET_URL);
 const keyMap: Record<string, string> = {
   a: 'C4',
   s: 'D4',
@@ -27,15 +27,27 @@ const instruments = [
   'MonoSynth',
 ] as const;
 
+const instrumentIcons: Record<string, string> = {
+  Synth: '🎹',
+  AMSynth: '⚡',
+  FMSynth: '🎛️',
+  DuoSynth: '🎶',
+  MembraneSynth: '🥁',
+  MetalSynth: '🤘',
+  MonoSynth: '🔊',
+};
+
 function App() {
   type InstrumentType = (typeof instruments)[number];
 
   const [instrument1, setInstrument1] = useState<InstrumentType>('Synth');
+  const [netInstrument, setNetInstrument] = useState<InstrumentType>('Synth');
   const [users, setUsers] = useState<number>(0);
   const [activeLocalNotes, setActiveLocalNotes] = useState<Set<string>>(
     new Set(),
   );
   const [activeNetNotes, setActiveNetNotes] = useState<Set<string>>(new Set());
+  const instrument1Ref = useRef(instrument1);
 
   const addNote = (note: string, isLocal: boolean) => {
     const cb = (prev: Set<string>) => {
@@ -71,6 +83,8 @@ function App() {
   };
 
   const synth1 = useRef<Tone.PolySynth | null>(null);
+  const broadcastSynth = useRef<Tone.PolySynth | null>(null);
+
   const netSynths = useRef<Record<string, Tone.PolySynth>>({});
   const getNetSynth = (instrument: InstrumentType) => {
     if (!netSynths.current[instrument]) {
@@ -80,7 +94,22 @@ function App() {
   };
 
   useEffect(() => {
+    broadcastSynth.current = createSynth('DuoSynth');
+    return () => {
+      broadcastSynth.current?.releaseAll();
+      broadcastSynth.current?.dispose();
+      broadcastSynth.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log(netInstrument, 'net instrument');
+  }, [netInstrument]);
+
+  useEffect(() => {
     synth1.current = createSynth(instrument1);
+    instrument1Ref.current = instrument1;
+
     return () => {
       synth1.current?.releaseAll();
       synth1.current?.dispose();
@@ -92,9 +121,6 @@ function App() {
     const handleKeyDown = async (e: KeyboardEvent) => {
       // e.preventDefault();
       const note = keyMap[e.key];
-      console.log(note, 'note');
-      console.log(notesDownLocal, 'notes down local');
-
       if (note && !notesDownLocal.current.has(note)) {
         // Start audio context on first key press
 
@@ -102,15 +128,13 @@ function App() {
           await Tone.start();
           console.log('AudioContext started!');
         }
-        console.log('adding');
-
         notesDownLocal.current.add(note);
         addNote(note, true);
 
         // Play all currently held keys as a chord
         const chord = Array.from(notesDownLocal.current);
         synth1.current?.triggerAttack(chord);
-        socket.emit('note_down', { note, instrument1 }); // broadcast to others
+        socket.emit('note_down', { note, instrument1: instrument1Ref.current }); // broadcast to others
       }
     };
 
@@ -133,30 +157,54 @@ function App() {
 
     // Listen for notes from other players
     socket.on('note_down', (data) => {
+      setNetInstrument(data.instrument1);
+
+      console.log(data, 'data');
       console.log('playing from broadcast');
       notesDownNet.current.add(data.note);
       addNote(data.note, false);
 
       const chord = Array.from(notesDownNet.current);
 
-      const netSynth = getNetSynth(data.instrument1);
+      broadcastSynth.current?.triggerAttack(chord);
 
-      netSynth.triggerAttack(chord);
+      // const netSynth = getNetSynth(data.instrument1);
+
+      // netSynth.triggerAttack(chord);
       console.log('broadcast synth playing?');
     });
 
+    console.log(netInstrument, 'net');
+    console.log(instrumentIcons[netInstrument], 'net');
     // // Listen for notes from other players
     socket.on('note_up', (data) => {
-      console.log('pausing from broadcast');
+      console.log(data, 'pausing from broadcast');
       notesDownNet.current.delete(data.note);
 
       removeNote(data.note, false);
-      const netSynth = getNetSynth(data.instrument1);
-      netSynth.triggerRelease(data.note);
+      // const netSynth = getNetSynth(data.instrument1);
+      // console.log(netSynth.activeVoices, 'active voices');
+      // console.log(netSynth., 'active voices');
+      // netSynth.triggerRelease(data.note);
+
+      broadcastSynth.current?.triggerRelease(data.note);
+
+      // Object.values(netSynths.current).forEach((s) => {
+      //   console.log(s.activeVoices, 'active voices iterate');
+      //   s.triggerRelease(data.note);
+      //   // s.releaseAll();
+      // });
 
       if (notesDownNet.current.size === 0) {
-        netSynth.releaseAll();
+        // netSynth.releaseAll();
+        broadcastSynth.current?.releaseAll();
       }
+    });
+
+    socket.on('change_instrument', (instrument) => {
+      broadcastSynth.current = createSynth(instrument);
+      // const prevNetSynth = getNetSynth(prevInstrument);
+      // prevNetSynth.releaseAll();
     });
 
     socket.on('users_update', (users) => {
@@ -181,9 +229,16 @@ function App() {
         <span>Select an instrument</span>
         <select
           value={instrument1}
-          onChange={(e) => setInstrument1(e.target.value as InstrumentType)}
+          onChange={(e) => {
+            setInstrument1((prevInstrument) => {
+              console.log('hey changing');
+              socket.emit('change_instrument', instrument1);
+              return e.target.value as InstrumentType;
+            });
+          }}
           className="instrument-select"
         >
+          <option value="Synth">Synth</option>
           <option value="AMSynth">AMSynth</option>
           <option value="DuoSynth">DuoSynth</option>
           <option value="FMSynth">FMSynth</option>
@@ -192,7 +247,7 @@ function App() {
           <option value="MonoSynth">MonoSynth</option>
         </select>
       </label>
-      <h3>Other Players 🎹</h3>
+      <h3>Other Players {instrumentIcons[netInstrument]}</h3>
       <div
         style={{
           display: 'flex',
@@ -221,7 +276,7 @@ function App() {
           </div>
         ))}
       </div>
-      <h3>Your Keyboard 🎹</h3>
+      <h3>Your Instrument {instrumentIcons[instrument1]}</h3>
 
       <div
         style={{
