@@ -4,7 +4,9 @@ import { io, Socket } from 'socket.io-client';
 
 import './App.css';
 
-const socket: Socket = io('http://localhost:3000');
+const SOCKET_URL = import.meta.env.VITE_BACKEND_URL; // read env variable
+
+const socket: Socket = io(SOCKET_URL || 'http://localhost:3000');
 const keyMap: Record<string, string> = {
   a: 'C4',
   s: 'D4',
@@ -30,9 +32,9 @@ function App() {
   const [instrument1, setInstrument1] = useState<InstrumentType>('Synth');
   const [instrument2, setInstrument2] = useState<InstrumentType>('Synth');
   const [users, setUsers] = useState<number>(0);
-  const [activeNotes, setActiveNotes] = useState<Set<string>>(new Set());
+  // const [activeNotes, setActiveNotes] = useState<Set<string>>(new Set());
 
-  const noteTimeouts = useRef<Map<string, number>>(new Map());
+  // const noteTimeouts = useRef<Map<string, number>>(new Map());
 
   // const triggerVisual = (note: string) => {
   //   // 1️⃣ Add note safely
@@ -186,7 +188,7 @@ function App() {
         <option value="MonoSynth">MonoSynth</option>
       </select>
 
-      <div
+      {/* <div
         style={{
           display: 'flex',
           gap: 10,
@@ -211,7 +213,7 @@ function App() {
             {note}
           </div>
         ))}
-      </div>
+      </div> */}
     </div>
   );
 }
