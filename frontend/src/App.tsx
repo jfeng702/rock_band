@@ -26,44 +26,44 @@ const instruments = [
   'MetalSynth',
   'MonoSynth',
 ] as const;
+
 function App() {
   type InstrumentType = (typeof instruments)[number];
 
   const [instrument1, setInstrument1] = useState<InstrumentType>('Synth');
   const [instrument2, setInstrument2] = useState<InstrumentType>('Synth');
   const [users, setUsers] = useState<number>(0);
-  // const [activeNotes, setActiveNotes] = useState<Set<string>>(new Set());
+  const [activeLocalNotes, setActiveLocalNotes] = useState<Set<string>>(
+    new Set(),
+  );
+  const [activeNetNotes, setActiveNetNotes] = useState<Set<string>>(new Set());
 
-  // const noteTimeouts = useRef<Map<string, number>>(new Map());
+  const addNote = (note: string, isLocal: boolean) => {
+    const cb = (prev: Set<string>) => {
+      const next = new Set(prev);
+      next.add(note);
+      return next;
+    };
+    if (isLocal) {
+      setActiveLocalNotes(cb);
+    } else {
+      setActiveNetNotes(cb);
+    }
+  };
 
-  // const triggerVisual = (note: string) => {
-  //   // 1️⃣ Add note safely
-  //   setActiveNotes((prev) => {
-  //     const next = new Set(prev);
-  //     next.add(note); // always mutate the fresh Set
-  //     return next;
-  //   });
+  const removeNote = (note: string, isLocal: boolean) => {
+    const cb = (prev: Set<string>) => {
+      const next = new Set(prev);
+      next.delete(note);
+      return next;
+    };
 
-  //   // 2️⃣ Clear previous timeout if it exists
-  //   if (noteTimeouts.current.has(note)) {
-  //     clearTimeout(noteTimeouts.current.get(note));
-  //   }
-
-  //   // 3️⃣ Schedule removal
-  //   const timeout = window.setTimeout(() => {
-  //     setActiveNotes((prev) => {
-  //       const next = new Set(prev);
-  //       next.delete(note);
-  //       return next;
-  //     });
-  //     noteTimeouts.current.delete(note);
-  //   }, 150);
-
-  //   noteTimeouts.current.set(note, timeout);
-  // };
+    isLocal ? setActiveLocalNotes(cb) : setActiveNetNotes(cb);
+  };
 
   const keysDownLocal = useRef(new Set<string>());
   const keysDownNet = useRef(new Set<string>());
+
   const createSynth = (instrument: InstrumentType) => {
     const SynthClass = Tone[
       instrument as keyof typeof Tone
@@ -71,22 +71,38 @@ function App() {
     return new Tone.PolySynth(SynthClass).toDestination();
   };
 
-  const synth1 = useRef(createSynth(instrument1));
-  const synth2 = useRef(createSynth(instrument2));
-  const broadcastSynth = useRef(createSynth('DuoSynth'));
+  const synth1 = useRef<Tone.PolySynth | null>(null);
+  const synth2 = useRef<Tone.PolySynth | null>(null);
+  const broadcastSynth = useRef<Tone.PolySynth | null>(null);
 
   useEffect(() => {
-    synth1.current.dispose();
     synth1.current = createSynth(instrument1);
+    return () => {
+      synth1.current?.dispose();
+      synth1.current = null;
+    };
   }, [instrument1]);
 
   useEffect(() => {
-    synth2.current.dispose();
     synth2.current = createSynth(instrument2);
+    return () => {
+      synth2.current?.dispose();
+      synth2.current = null;
+    };
   }, [instrument2]);
 
   useEffect(() => {
+    broadcastSynth.current = createSynth('DuoSynth');
+    return () => {
+      broadcastSynth.current?.dispose();
+      broadcastSynth.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
+      const note = keyMap[e.key];
+
       if (!keysDownLocal.current.has(e.key) && keyMap[e.key]) {
         // Start audio context on first key press
 
@@ -96,35 +112,41 @@ function App() {
           });
         }
         keysDownLocal.current.add(e.key);
+        addNote(note, true);
 
         // Play all currently held keys as a chord
         const chord = Array.from(keysDownLocal.current).map((k) => keyMap[k]);
-        synth1.current.triggerAttack(chord);
-        // synth2.current.triggerAttack(chord);
+        synth1.current?.triggerAttack(chord);
+        synth2.current?.triggerAttack(chord);
         socket.emit('key_down', e.key); // broadcast to others
-        // triggerVisual(keyMap[e.key]);
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      const note = keyMap[e.key];
+      if (!note) return;
+      removeNote(note, true);
+
       keysDownLocal.current.delete(e.key);
 
-      const note = keyMap[e.key];
-      synth1.current.triggerRelease(note);
-      synth2.current.triggerRelease(note);
+      synth1.current?.triggerRelease(note);
+      synth2.current?.triggerRelease(note);
       if (keysDownLocal.current.size === 0) {
-        synth1.current.releaseAll();
-        synth2.current.releaseAll();
+        synth1.current?.releaseAll();
+        synth2.current?.releaseAll();
       }
       socket.emit('key_up', e.key); // broadcast to others
     };
 
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
     // Listen for notes from other players
     socket.on('key_down', (key) => {
-      // triggerVisual(keyMap[key]);
-
       console.log('playing from broadcast');
       keysDownNet.current.add(key);
+      const note = keyMap[key];
+      addNote(note, false);
 
       const chord = Array.from(keysDownNet.current).map((k) => keyMap[k]);
 
@@ -137,9 +159,10 @@ function App() {
       keysDownNet.current.delete(key);
 
       const note = keyMap[key];
-      broadcastSynth.current.triggerRelease(note);
+      removeNote(note, false);
+      broadcastSynth.current?.triggerRelease(note);
       if (keysDownNet.current.size === 0) {
-        broadcastSynth.current.releaseAll();
+        broadcastSynth.current?.releaseAll();
       }
     });
 
@@ -147,8 +170,6 @@ function App() {
       setUsers(users);
     });
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
     return () => {
       socket.off('key_down');
       socket.off('users_update');
@@ -188,7 +209,8 @@ function App() {
         <option value="MonoSynth">MonoSynth</option>
       </select>
 
-      {/* <div
+      <h3>Other Players 🎹</h3>
+      <div
         style={{
           display: 'flex',
           gap: 10,
@@ -206,14 +228,44 @@ function App() {
               display: 'flex',
               alignItems: 'flex-end',
               justifyContent: 'center',
-              background: activeNotes.has(note) ? '#4ade80' : 'white',
+              background: activeNetNotes.has(note)
+                ? 'rgb(201, 48, 27)'
+                : 'white',
               transition: 'background 0.05s',
             }}
           >
             {note}
           </div>
         ))}
-      </div> */}
+      </div>
+      <h3>Your Keyboard 🎹</h3>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          marginTop: 20,
+          justifyContent: 'center',
+        }}
+      >
+        {Object.values(keyMap).map((note) => (
+          <div
+            key={note}
+            style={{
+              width: 60,
+              height: 200,
+              border: '1px solid black',
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+              background: activeLocalNotes.has(note) ? '#4ade80' : 'white',
+              transition: 'background 0.05s',
+            }}
+          >
+            {note}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
