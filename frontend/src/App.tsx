@@ -202,6 +202,41 @@ function App() {
     };
   }, []);
 
+  const handleNoteDown = async (note: string) => {
+    if (notesDownLocal.current.has(note)) return;
+
+    if (Tone.getContext().state !== 'running') {
+      await Tone.start();
+    }
+
+    notesDownLocal.current.add(note);
+    addNote(note, true);
+
+    const chord = Array.from(notesDownLocal.current);
+    synth1.current?.triggerAttack(chord);
+
+    socket.emit('note_down', {
+      note,
+      instrument1: instrument1Ref.current,
+    });
+  };
+
+  const handleNoteUp = (note: string) => {
+    if (!notesDownLocal.current.has(note)) return;
+
+    removeNote(note, true);
+    notesDownLocal.current.delete(note);
+
+    synth1.current?.triggerRelease(note);
+    if (notesDownLocal.current.size === 0) {
+      synth1.current?.releaseAll();
+    }
+
+    socket.emit('note_up', {
+      note,
+      instrument1: instrument1Ref.current,
+    });
+  };
   return (
     <div style={{ padding: 20 }}>
       <h1>Rock Band Multiplayer</h1>
@@ -269,6 +304,9 @@ function App() {
         {Object.values(keyMap).map((note) => (
           <div
             key={note}
+            onMouseDown={() => void handleNoteDown(note)}
+            onMouseUp={() => handleNoteUp(note)}
+            onMouseLeave={() => handleNoteUp(note)}
             style={{
               width: 60,
               height: 200,
