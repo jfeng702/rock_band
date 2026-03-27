@@ -271,13 +271,31 @@
 }
 
 @media (max-width: 640px) {
+  .app-shell {
+    padding-inline: 12px;
+  }
+
   .app-shell p {
     margin: 0 auto;
     max-width: 24rem;
   }
 
   .keyboard-row {
-    justify-content: flex-start;
-    padding-inline: 4px;
+    gap: 4px;
+    justify-content: center;
+    overflow-x: visible;
+    padding-inline: 0;
+  }
+
+  .note-key {
+    width: clamp(28px, calc((100vw - 56px) / 9), 36px);
+    height: clamp(108px, 34vw, 136px);
+    flex-basis: clamp(28px, calc((100vw - 56px) / 9), 36px);
+    padding-bottom: 8px;
+    font-size: 12px;
+  }
+
+  .note-key--local:focus-visible {
+    outline-width: 2px;
   }
 }
