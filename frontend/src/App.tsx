@@ -1,4 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import * as Tone from 'tone';
 import { io, Socket } from 'socket.io-client';
 
@@ -39,6 +45,7 @@ const instrumentIcons: Record<string, string> = {
 
 function App() {
   type InstrumentType = (typeof instruments)[number];
+  const notes = Object.values(keyMap);
 
   const [instrument1, setInstrument1] = useState<InstrumentType>('Synth');
   const [netInstrument, setNetInstrument] = useState<InstrumentType>('Synth');
@@ -48,8 +55,11 @@ function App() {
   );
   const [activeNetNotes, setActiveNetNotes] = useState<Set<string>>(new Set());
   const instrument1Ref = useRef(instrument1);
+  const notesDownLocal = useRef(new Set<string>());
+  const notesDownNet = useRef(new Set<string>());
+  const activePointers = useRef(new Map<number, string>());
 
-  const addNote = (note: string, isLocal: boolean) => {
+  const addNote = useCallback((note: string, isLocal: boolean) => {
     const cb = (prev: Set<string>) => {
       const next = new Set(prev);
       next.add(note);
@@ -60,9 +70,9 @@ function App() {
     } else {
       setActiveNetNotes(cb);
     }
-  };
+  }, []);
 
-  const removeNote = (note: string, isLocal: boolean) => {
+  const removeNote = useCallback((note: string, isLocal: boolean) => {
     const cb = (prev: Set<string>) => {
       const next = new Set(prev);
       next.delete(note);
@@ -74,10 +84,7 @@ function App() {
     } else {
       setActiveNetNotes(cb);
     }
-  };
-
-  const notesDownLocal = useRef(new Set<string>());
-  const notesDownNet = useRef(new Set<string>());
+  }, []);
 
   const createSynth = useCallback((instrument: InstrumentType) => {
     const SynthClass = Tone[
@@ -88,6 +95,66 @@ function App() {
 
   const synth1 = useRef<Tone.PolySynth | null>(null);
   const broadcastSynth = useRef<Tone.PolySynth | null>(null);
+
+  const handleNoteDown = useCallback(
+    async (note: string) => {
+      if (notesDownLocal.current.has(note)) return;
+
+      if (Tone.getContext().state !== 'running') {
+        await Tone.start();
+      }
+
+      notesDownLocal.current.add(note);
+      addNote(note, true);
+
+      const chord = Array.from(notesDownLocal.current);
+      synth1.current?.triggerAttack(chord);
+
+      socket.emit('note_down', {
+        note,
+        instrument1: instrument1Ref.current,
+      });
+    },
+    [addNote],
+  );
+
+  const handleNoteUp = useCallback(
+    (note: string) => {
+      if (!notesDownLocal.current.has(note)) return;
+
+      removeNote(note, true);
+      notesDownLocal.current.delete(note);
+
+      synth1.current?.triggerRelease(note);
+      if (notesDownLocal.current.size === 0) {
+        synth1.current?.releaseAll();
+      }
+
+      socket.emit('note_up', {
+        note,
+        instrument1: instrument1Ref.current,
+      });
+    },
+    [removeNote],
+  );
+
+  const releaseAllLocalNotes = useCallback(() => {
+    const activeNotes = Array.from(notesDownLocal.current);
+    if (activeNotes.length === 0) return;
+
+    activePointers.current.clear();
+
+    activeNotes.forEach((note) => {
+      removeNote(note, true);
+      socket.emit('note_up', {
+        note,
+        instrument1: instrument1Ref.current,
+      });
+    });
+
+    notesDownLocal.current.clear();
+    synth1.current?.releaseAll();
+  }, [removeNote]);
 
   useEffect(() => {
     const next = createSynth(instrument1);
@@ -125,60 +192,43 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
-      const note = keyMap[e.key];
-      if (note && !notesDownLocal.current.has(note)) {
-        // Start audio context on first key press
-
-        if (Tone.getContext().state !== 'running') {
-          await Tone.start();
-          console.log('AudioContext started!');
-        }
-        notesDownLocal.current.add(note);
-        addNote(note, true);
-
-        // Play all currently held keys as a chord
-        const chord = Array.from(notesDownLocal.current);
-        synth1.current?.triggerAttack(chord);
-        socket.emit('note_down', { note, instrument1: instrument1Ref.current }); // broadcast to others
-      }
+      const note = keyMap[e.key.toLowerCase()];
+      if (!note) return;
+      await handleNoteDown(note);
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      const note = keyMap[e.key];
+      const note = keyMap[e.key.toLowerCase()];
       if (!note) return;
-      removeNote(note, true);
+      handleNoteUp(note);
+    };
 
-      notesDownLocal.current.delete(note);
-
-      synth1.current?.triggerRelease(note);
-      if (notesDownLocal.current.size === 0) {
-        synth1.current?.releaseAll();
-      }
-      socket.emit('note_up', { note, instrument1: instrument1Ref.current }); // broadcast to others
+    const handleWindowBlur = () => {
+      releaseAllLocalNotes();
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
     };
-  }, []);
+  }, [handleNoteDown, handleNoteUp, releaseAllLocalNotes]);
 
   useEffect(() => {
-    // Listen for notes from other players
-    socket.on('note_down', (data) => {
+    const handleRemoteNoteDown = (data: { note: string }) => {
       notesDownNet.current.add(data.note);
       addNote(data.note, false);
 
       const chord = Array.from(notesDownNet.current);
 
       broadcastSynth.current?.triggerAttack(chord);
-    });
+    };
 
-    // // Listen for notes from other players
-    socket.on('note_up', (data) => {
+    const handleRemoteNoteUp = (data: { note: string }) => {
       notesDownNet.current.delete(data.note);
 
       removeNote(data.note, false);
@@ -188,61 +238,60 @@ function App() {
       if (notesDownNet.current.size === 0) {
         broadcastSynth.current?.releaseAll();
       }
-    });
+    };
 
-    socket.on('change_instrument', (instrument) => {
+    const handleRemoteInstrumentChange = (instrument: InstrumentType) => {
       setNetInstrument(instrument);
-    });
+    };
 
-    socket.on('users_update', (users) => {
-      setUsers(users);
-    });
+    const handleUsersUpdate = (nextUsers: number) => {
+      setUsers(nextUsers);
+    };
+
+    socket.on('note_down', handleRemoteNoteDown);
+    socket.on('note_up', handleRemoteNoteUp);
+    socket.on('change_instrument', handleRemoteInstrumentChange);
+    socket.on('users_update', handleUsersUpdate);
 
     return () => {
-      socket.off('note_down');
-      socket.off('note_up');
-      socket.off('change_instrument');
-      socket.off('users_update');
+      socket.off('note_down', handleRemoteNoteDown);
+      socket.off('note_up', handleRemoteNoteUp);
+      socket.off('change_instrument', handleRemoteInstrumentChange);
+      socket.off('users_update', handleUsersUpdate);
     };
-  }, []);
+  }, [addNote, removeNote]);
 
-  const handleNoteDown = async (note: string) => {
-    if (notesDownLocal.current.has(note)) return;
-
-    if (Tone.getContext().state !== 'running') {
-      await Tone.start();
+  const handlePointerDown = async (
+    e: ReactPointerEvent<HTMLButtonElement>,
+    note: string,
+  ) => {
+    if (navigator.vibrate) {
+      navigator.vibrate(10);
     }
-
-    notesDownLocal.current.add(note);
-    addNote(note, true);
-
-    const chord = Array.from(notesDownLocal.current);
-    synth1.current?.triggerAttack(chord);
-
-    socket.emit('note_down', {
-      note,
-      instrument1: instrument1Ref.current,
-    });
+    e.preventDefault();
+    activePointers.current.set(e.pointerId, note);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    await handleNoteDown(note);
   };
 
-  const handleNoteUp = (note: string) => {
-    if (!notesDownLocal.current.has(note)) return;
+  const releasePointer = (
+    e: ReactPointerEvent<HTMLButtonElement>,
+    note: string,
+  ) => {
+    e.preventDefault();
 
-    removeNote(note, true);
-    notesDownLocal.current.delete(note);
+    const activeNote = activePointers.current.get(e.pointerId) ?? note;
+    activePointers.current.delete(e.pointerId);
 
-    synth1.current?.triggerRelease(note);
-    if (notesDownLocal.current.size === 0) {
-      synth1.current?.releaseAll();
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
 
-    socket.emit('note_up', {
-      note,
-      instrument1: instrument1Ref.current,
-    });
+    handleNoteUp(activeNote);
   };
+
   return (
-    <div style={{ padding: 20 }}>
+    <div className="app-shell">
       <h1>Rock Band Multiplayer</h1>
       <p>Press A–J keys to play notes 🎸</p>
       <h2>Connected users: {users}</h2>
@@ -267,29 +316,13 @@ function App() {
         </select>
       </label>
       <h3>Other Players {instrumentIcons[netInstrument]}</h3>
-      <div
-        style={{
-          display: 'flex',
-          gap: 10,
-          marginTop: 20,
-          justifyContent: 'center',
-        }}
-      >
-        {Object.values(keyMap).map((note) => (
+      <div className="keyboard-row" role="group" aria-label="Other players">
+        {notes.map((note) => (
           <div
             key={note}
-            style={{
-              width: 60,
-              height: 200,
-              border: '1px solid black',
-              display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'center',
-              background: activeNetNotes.has(note)
-                ? 'rgb(201, 48, 27)'
-                : 'white',
-              transition: 'background 0.05s',
-            }}
+            className={`note-key note-key--remote${
+              activeNetNotes.has(note) ? ' note-key--active-remote' : ''
+            }`}
           >
             {note}
           </div>
@@ -297,33 +330,20 @@ function App() {
       </div>
       <h3>Your Instrument {instrumentIcons[instrument1]}</h3>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: 10,
-          marginTop: 20,
-          justifyContent: 'center',
-        }}
-      >
-        {Object.values(keyMap).map((note) => (
-          <div
+      <div className="keyboard-row" role="group" aria-label="Your instrument">
+        {notes.map((note) => (
+          <button
             key={note}
-            onMouseDown={() => handleNoteDown(note)}
-            onMouseUp={() => handleNoteUp(note)}
-            onMouseLeave={() => handleNoteUp(note)}
-            style={{
-              width: 60,
-              height: 200,
-              border: '1px solid black',
-              display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'center',
-              background: activeLocalNotes.has(note) ? '#4ade80' : 'white',
-              transition: 'background 0.05s',
-            }}
+            type="button"
+            className={`note-key note-key--local${
+              activeLocalNotes.has(note) ? ' note-key--active-local' : ''
+            }`}
+            onPointerDown={(e) => void handlePointerDown(e, note)}
+            onPointerUp={(e) => releasePointer(e, note)}
+            onPointerCancel={(e) => releasePointer(e, note)}
           >
             {note}
-          </div>
+          </button>
         ))}
       </div>
     </div>
