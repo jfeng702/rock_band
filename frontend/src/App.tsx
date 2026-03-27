@@ -86,41 +86,34 @@ function App() {
   const broadcastSynth = useRef<Tone.PolySynth | null>(null);
 
   useEffect(() => {
-    broadcastSynth.current = createSynth('DuoSynth');
-    synth1.current = createSynth(instrument1Ref.current);
-    return () => {
-      broadcastSynth.current?.releaseAll();
-      broadcastSynth.current?.dispose();
-      broadcastSynth.current = null;
-      synth1.current?.releaseAll();
-      synth1.current?.dispose();
-      synth1.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const prev = synth1.current;
     const next = createSynth(instrument1);
+    const prev = synth1.current;
     synth1.current = next;
 
     prev?.releaseAll();
     prev?.dispose();
 
     return () => {
+      if (synth1.current === next) {
+        synth1.current = null;
+      }
       next.releaseAll();
       next.dispose();
     };
   }, [instrument1]);
 
   useEffect(() => {
-    const prev = broadcastSynth.current;
     const next = createSynth(netInstrument);
+    const prev = broadcastSynth.current;
     broadcastSynth.current = next;
 
     prev?.releaseAll();
     prev?.dispose();
 
     return () => {
+      if (broadcastSynth.current === next) {
+        broadcastSynth.current = null;
+      }
       next.releaseAll();
       next.dispose();
     };
@@ -182,7 +175,6 @@ function App() {
 
     // // Listen for notes from other players
     socket.on('note_up', (data) => {
-      console.log(data, 'pausing from broadcast');
       notesDownNet.current.delete(data.note);
 
       removeNote(data.note, false);
