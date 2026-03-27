@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import * as Tone from 'tone';
 import { io, Socket } from 'socket.io-client';
 
@@ -69,18 +69,22 @@ function App() {
       return next;
     };
 
-    isLocal ? setActiveLocalNotes(cb) : setActiveNetNotes(cb);
+    if (isLocal) {
+      setActiveLocalNotes(cb);
+    } else {
+      setActiveNetNotes(cb);
+    }
   };
 
   const notesDownLocal = useRef(new Set<string>());
   const notesDownNet = useRef(new Set<string>());
 
-  const createSynth = (instrument: InstrumentType) => {
+  const createSynth = useCallback((instrument: InstrumentType) => {
     const SynthClass = Tone[
       instrument as keyof typeof Tone
     ] as unknown as typeof Tone.Synth;
     return new Tone.PolySynth(SynthClass).toDestination();
-  };
+  }, []);
 
   const synth1 = useRef<Tone.PolySynth | null>(null);
   const broadcastSynth = useRef<Tone.PolySynth | null>(null);
@@ -100,7 +104,7 @@ function App() {
       next.releaseAll();
       next.dispose();
     };
-  }, [instrument1]);
+  }, [instrument1, createSynth]);
 
   useEffect(() => {
     const next = createSynth(netInstrument);
@@ -117,7 +121,7 @@ function App() {
       next.releaseAll();
       next.dispose();
     };
-  }, [netInstrument]);
+  }, [netInstrument, createSynth]);
 
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
@@ -304,7 +308,7 @@ function App() {
         {Object.values(keyMap).map((note) => (
           <div
             key={note}
-            onMouseDown={() => void handleNoteDown(note)}
+            onMouseDown={() => handleNoteDown(note)}
             onMouseUp={() => handleNoteUp(note)}
             onMouseLeave={() => handleNoteUp(note)}
             style={{
