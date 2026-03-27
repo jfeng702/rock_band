@@ -99,24 +99,30 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // create new synth whenever instrument changes
-    const newSynth = createSynth(instrument1);
-    synth1.current = newSynth;
+    const prev = synth1.current;
+    const next = createSynth(instrument1);
+    synth1.current = next;
+
+    prev?.releaseAll();
+    prev?.dispose();
 
     return () => {
-      // cleanup previous synth
-      newSynth.releaseAll();
-      newSynth.dispose();
+      next.releaseAll();
+      next.dispose();
     };
   }, [instrument1]);
 
   useEffect(() => {
-    const newSynth = createSynth(netInstrument);
-    broadcastSynth.current = newSynth;
+    const prev = broadcastSynth.current;
+    const next = createSynth(netInstrument);
+    broadcastSynth.current = next;
+
+    prev?.releaseAll();
+    prev?.dispose();
 
     return () => {
-      newSynth.releaseAll();
-      newSynth.dispose();
+      next.releaseAll();
+      next.dispose();
     };
   }, [netInstrument]);
 
