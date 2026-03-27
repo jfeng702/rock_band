@@ -265,6 +265,9 @@ function App() {
     e: ReactPointerEvent<HTMLButtonElement>,
     note: string,
   ) => {
+    if (navigator.vibrate) {
+      navigator.vibrate(10);
+    }
     e.preventDefault();
     activePointers.current.set(e.pointerId, note);
     e.currentTarget.setPointerCapture(e.pointerId);
