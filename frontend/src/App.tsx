@@ -21,6 +21,8 @@ const keyMap: Record<string, string> = {
   g: 'G4',
   h: 'A4',
   j: 'B4',
+  k: 'C5',
+  l: 'D5',
 };
 
 const instruments = [
