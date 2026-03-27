@@ -24,10 +24,18 @@ const io = new Server(server, {
 
 const connectedUsers = new Set<string>();
 
+const clientInstruments: Record<string, string> = {}; // socketId -> instrument
+
 // Socket.IO events
 io.on('connection', (socket: Socket) => {
   console.log('New client connected:', socket.id);
   connectedUsers.add(socket.id);
+
+  // Send the current instruments of all other clients to the new client
+  socket.emit('change_instrument', Object.values(clientInstruments)[0]);
+
+  // Store default instrument
+  clientInstruments[socket.id] = 'Synth';
 
   io.emit('users_update', connectedUsers.size);
 
@@ -49,12 +57,15 @@ io.on('connection', (socket: Socket) => {
   );
 
   socket.on('change_instrument', (instrument) => {
-    console.log('receive change', instrument);
+    clientInstruments[socket.id] = instrument;
+
     socket.broadcast.emit('change_instrument', instrument);
   });
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
+
+    delete clientInstruments[socket.id];
     connectedUsers.delete(socket.id);
     io.emit('users_update', connectedUsers.size);
   });
