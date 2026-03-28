@@ -5,6 +5,11 @@ export interface IUser extends Document {
   connectedAt: Date;
   ip: string;
   userAgent: string;
+  city?: string;
+  region?: string;
+  country?: string;
+  isp?: string;
+  zip?: string;
 }
 
 const userSchema: Schema<IUser> = new Schema(
@@ -13,6 +18,11 @@ const userSchema: Schema<IUser> = new Schema(
     connectedAt: { type: Date },
     ip: { type: String },
     userAgent: { type: String },
+    city: { type: String },
+    region: { type: String },
+    country: { type: String },
+    zip: { type: String },
+    isp: { type: String },
   },
   { timestamps: true },
 );

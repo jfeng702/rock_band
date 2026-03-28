@@ -38,13 +38,17 @@ async function startServer() {
     // Socket.IO events
     io.on('connection', async (socket: Socket) => {
       console.log('New client connected:', socket.id);
-      console.log(socket.handshake.headers);
       connectedUsers.add(socket.id);
 
-      // Get client IP
+      // 1️⃣ Get real IP (behind proxy like Render/Cloudflare)
       const ip =
-        socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+        (socket.handshake.headers['x-forwarded-for'] as string)?.split(
+          ',',
+        )[0] || socket.handshake.address;
+
       const userAgent = socket.handshake.headers['user-agent']; // <-- get User-Agent
+      const geoRes = await fetch(`http://ip-api.com/json/24.6.192.15`);
+      const geoData = await geoRes.json();
 
       // Save user to MongoDB
       try {
@@ -53,6 +57,11 @@ async function startServer() {
           connectedAt: new Date(),
           ip: ip as string,
           userAgent: userAgent as string,
+          city: geoData.city,
+          region: geoData.regionName,
+          country: geoData.country,
+          zip: geoData.zip,
+          isp: geoData.isp,
         });
 
         console.log('User saved in DB:', socket.id);
