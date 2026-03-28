@@ -9,8 +9,6 @@
     "esModuleInterop": true, // allows import express from "express"
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node",
-    "ignoreDeprecations": "6.0",
-    "allowImportingTsExtensions": true,
-    "noEmit": true
+    "ignoreDeprecations": "6.0"
   }
 }

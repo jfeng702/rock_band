@@ -5,8 +5,8 @@ import http from 'http';
 import { Server, Socket } from 'socket.io';
 import cors from 'cors';
 import 'dotenv/config'; // if using ESM
-import { connectDB } from './db/index.ts';
-import { User } from './models/User.ts';
+import { connectDB } from './db';
+import { User } from './models/User';
 
 // Express app setup
 const app: Express = express();
