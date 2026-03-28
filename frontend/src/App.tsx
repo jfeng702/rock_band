@@ -302,6 +302,7 @@ function App() {
         <select
           value={instrument1}
           onChange={(e) => {
+            e.target.blur();
             const newInstrument = e.target.value as InstrumentType;
 
             instrument1Ref.current = newInstrument;
