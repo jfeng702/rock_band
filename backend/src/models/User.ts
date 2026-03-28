@@ -16,7 +16,7 @@ const userSchema: Schema<IUser> = new Schema(
   {
     socketId: { type: String, required: true, unique: true },
     connectedAt: { type: Date },
-    ip: { type: String },
+    ip: { type: String, index: true },
     userAgent: { type: String },
     city: { type: String },
     region: { type: String },
