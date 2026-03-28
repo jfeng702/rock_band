@@ -263,6 +263,12 @@ function App() {
     };
   }, [addNote, removeNote]);
 
+  useEffect(() => {
+    socket.on('connect', () => {
+      socket.emit('change_instrument', instrument1Ref.current);
+    });
+  }, []);
+
   const handlePointerDown = async (
     e: ReactPointerEvent<HTMLButtonElement>,
     note: string,

@@ -5,6 +5,7 @@ import http from 'http';
 import { Server, Socket } from 'socket.io';
 import cors from 'cors';
 import 'dotenv/config'; // if using ESM
+import { log } from 'console';
 
 // Express app setup
 const app: Express = express();
@@ -31,11 +32,8 @@ io.on('connection', (socket: Socket) => {
   console.log('New client connected:', socket.id);
   connectedUsers.add(socket.id);
 
-  // Send the current instruments of all other clients to the new client
+  // Send the current instrument of 1st other client to new client
   socket.emit('change_instrument', Object.values(clientInstruments)[0]);
-
-  // Store default instrument
-  clientInstruments[socket.id] = 'Synth';
 
   io.emit('users_update', connectedUsers.size);
 
