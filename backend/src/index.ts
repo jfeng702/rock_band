@@ -60,7 +60,7 @@ async function startServer() {
           city: geoData.city,
           region: geoData.regionName,
           country: geoData.country,
-          zip: geoData.zip,
+          zip: Number(geoData.zip),
           isp: geoData.isp,
         });
 
