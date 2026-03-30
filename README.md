@@ -14,7 +14,7 @@ Rock Band Multiplayer is a browser-based music jam app built with React, Tone.js
 ## Tech Stack
 
 - Frontend: React, TypeScript, Vite, Tone.js, Socket.IO Client
-- Backend: Node.js, TypeScript, Express, Socket.IO
+- Backend: Node.js, TypeScript, Express, Socket.IO, MongoDB
 
 ## Project Structure
 
