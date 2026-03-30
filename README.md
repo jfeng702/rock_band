@@ -10,6 +10,7 @@ Rock Band Multiplayer is a browser-based music jam app built with React, Tone.js
 - Broadcast note presses and releases to other connected clients in real time.
 - See remote notes highlighted separately from your own notes.
 - Track the number of connected users.
+- Track player's instrument and friend's instrument
 
 ## Tech Stack
 
