@@ -47,7 +47,7 @@ async function startServer() {
         )[0] || socket.handshake.address;
 
       const userAgent = socket.handshake.headers['user-agent']; // <-- get User-Agent
-      const geoRes = await fetch(`http://ip-api.com/json/24.6.192.15`);
+      const geoRes = await fetch(`http://ip-api.com/json/${ip}`);
       const geoData = await geoRes.json();
 
       // Save user to MongoDB
