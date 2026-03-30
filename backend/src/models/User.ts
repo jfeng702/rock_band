@@ -9,7 +9,7 @@ export interface IUser extends Document {
   region?: string;
   country?: string;
   isp?: string;
-  zip?: number;
+  zip?: string;
 }
 
 const userSchema: Schema<IUser> = new Schema(
@@ -21,7 +21,7 @@ const userSchema: Schema<IUser> = new Schema(
     city: { type: String },
     region: { type: String },
     country: { type: String },
-    zip: { type: Number },
+    zip: { type: String },
     isp: { type: String },
   },
   { timestamps: true },

@@ -15,6 +15,9 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = Number(process.env.PORT) || 3000;
+const allowedOrigins = [process.env.FRONTEND_URL, 'http://localhost:5173'].filter(
+  (origin): origin is string => Boolean(origin),
+);
 
 async function startServer() {
   try {
@@ -26,7 +29,7 @@ async function startServer() {
     // Socket.IO setup
     const io = new Server(server, {
       cors: {
-        origin: [process.env.FRONTEND_URL || '', 'http://localhost:5173'], // React frontend
+        origin: allowedOrigins, // React frontend
         methods: ['GET', 'POST'],
       },
     });
@@ -37,37 +40,41 @@ async function startServer() {
 
     // Socket.IO events
     io.on('connection', async (socket: Socket) => {
+      const persistTelemetry = async () => {
+        try {
+          // 1️⃣ Get real IP (behind proxy like Render/Cloudflare)
+          const ip =
+            (socket.handshake.headers['x-forwarded-for'] as string)?.split(
+              ',',
+            )[0] || socket.handshake.address;
+
+          const userAgent = socket.handshake.headers['user-agent']; // <-- get User-Agent
+          const geoRes = await fetch(`http://ip-api.com/json/${ip}`);
+          const geoData = await geoRes.json();
+
+          // Save user to MongoDB
+          await User.create({
+            socketId: socket.id,
+            connectedAt: new Date(),
+            ip: ip as string,
+            userAgent: userAgent as string,
+            city: geoData.city,
+            region: geoData.regionName,
+            country: geoData.country,
+            zip: String(geoData.zip ?? ''),
+            isp: geoData.isp,
+          });
+
+          console.log('User saved in DB:', socket.id);
+        } catch (err) {
+          console.error('Failed to save user:', err);
+        }
+      };
+
       console.log('New client connected:', socket.id);
       connectedUsers.add(socket.id);
 
-      // 1️⃣ Get real IP (behind proxy like Render/Cloudflare)
-      const ip =
-        (socket.handshake.headers['x-forwarded-for'] as string)?.split(
-          ',',
-        )[0] || socket.handshake.address;
-
-      const userAgent = socket.handshake.headers['user-agent']; // <-- get User-Agent
-      const geoRes = await fetch(`http://ip-api.com/json/${ip}`);
-      const geoData = await geoRes.json();
-
-      // Save user to MongoDB
-      try {
-        await User.create({
-          socketId: socket.id,
-          connectedAt: new Date(),
-          ip: ip as string,
-          userAgent: userAgent as string,
-          city: geoData.city,
-          region: geoData.regionName,
-          country: geoData.country,
-          zip: Number(geoData.zip),
-          isp: geoData.isp,
-        });
-
-        console.log('User saved in DB:', socket.id);
-      } catch (err) {
-        console.error('Failed to save user:', err);
-      }
+      persistTelemetry();
 
       // Send the current instrument of 1st other client to new client
       socket.emit('change_instrument', Object.values(clientInstruments)[0]);
